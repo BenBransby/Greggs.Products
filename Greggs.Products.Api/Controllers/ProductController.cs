@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Greggs.Products.Api.Models;
+using Greggs.Products.Api.DataAccess; //allows compiler to use types from DataAccess
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
@@ -11,30 +12,31 @@ namespace Greggs.Products.Api.Controllers;
 [Route("[controller]")]
 public class ProductController : ControllerBase
 {
-    private static readonly string[] Products = new[]
-    {
-        "Sausage Roll", "Vegan Sausage Roll", "Steak Bake", "Yum Yum", "Pink Jammie"
-    };
-
     private readonly ILogger<ProductController> _logger;
+    private readonly IDataAccess<Product> _dataAccess; //holds instance of dataAccess layer 
 
-    public ProductController(ILogger<ProductController> logger)
+    public ProductController(ILogger<ProductController> logger, IDataAccess<Product> dataAccess) //second param added to allow service for IDataAccess to be found
     {
         _logger = logger;
+        _dataAccess = dataAccess; //assign dataAccess instance to previously declared field
     }
 
     [HttpGet]
-    public IEnumerable<Product> Get(int pageStart = 0, int pageSize = 5)
+    public IEnumerable<object> Get(int? pageStart, int? pageSize, string currency = "GBP") //get method changed to object since two types of collections are being returned.
     {
-        if (pageSize > Products.Length)
-            pageSize = Products.Length;
+        const decimal exchangeRate = 1.11m; //defined euro exchange rate
 
-        var rng = new Random();
-        return Enumerable.Range(1, pageSize).Select(index => new Product
+        var products = _dataAccess.List(pageStart, pageSize); //retrieve the initial list of products
+
+        if (currency.ToLower() == "eur") //checks to see if the currency selected is euro and performs logic to convert
+        {
+            return products.Select(p => new ProductInEuros
             {
-                PriceInPounds = rng.Next(0, 10),
-                Name = Products[rng.Next(Products.Length)]
-            })
-            .ToArray();
+                Name = p.Name,
+                PriceInEuros = p.PriceInPounds * exchangeRate // converts price from pounds to euro using exchange rate defined
+            });
+        }
+        
+        return products; //fallback to return old list if necessary
     }
 }
